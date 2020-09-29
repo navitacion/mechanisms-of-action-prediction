@@ -1,13 +1,14 @@
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 
 ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /workspace
 
 RUN apt-get update && apt-get install -y \
   cmake \
   git \
-  python3.7 \
+  python3 \
   python3-pip
 
 COPY ./ ./
