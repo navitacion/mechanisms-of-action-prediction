@@ -13,13 +13,9 @@ RUN apt-get update && apt-get install -y \
 
 COPY ./ ./
 
-RUN echo alias pip="pip3">> ~/.bashrc \
-  && echo alias python="python3">> ~/.bashrc \
-  && source ~/.bashrc
-
 # Library Install By Poetry
-RUN pip install --upgrade pip
-RUN pip install poetry
+RUN pip3 install --upgrade pip
+RUN pip3 install poetry
 
 RUN poetry config virtualenvs.create false && poetry install
 
@@ -31,6 +27,6 @@ RUN git clone --recursive https://github.com/microsoft/LightGBM && cd LightGBM \
   && make -j4 
 
 RUN cd LightGBM/python-package \
-  && python setup.py install
+  && python3 setup.py install
 
 CMD bash
