@@ -23,8 +23,9 @@ RUN git clone --recursive https://github.com/microsoft/LightGBM && cd LightGBM \
   && mkdir build \
   && cd build \
   && cmake .. \
-  && make -j4 \
-  && cd ../python-packages \
-  && python setup.py install
+  && make -j4 
+
+RUN cd LightGBM/python-package \
+  && python3 setup.py install
 
 CMD bash
