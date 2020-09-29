@@ -1,0 +1,10 @@
+version: '3'
+services:
+  env:
+    build: ./
+    user: root
+    volumes:
+      - ./:/workspace
+    working_dir: /workspace
+    tty: true
+    command: bash
