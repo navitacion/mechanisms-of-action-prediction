@@ -9,7 +9,10 @@ RUN apt-get update && apt-get install -y \
   cmake \
   git \
   python3 \
-  python3-pip
+  python3-pip \
+  python3-venv
+
+RUN cd /usr/bin/ && ln -s /usr/bin/python3 ./python
 
 COPY ./ ./
 
@@ -27,6 +30,6 @@ RUN git clone --recursive https://github.com/microsoft/LightGBM && cd LightGBM \
   && make -j4 
 
 RUN cd LightGBM/python-package \
-  && python3 setup.py install
+  && python setup.py install
 
 CMD bash
