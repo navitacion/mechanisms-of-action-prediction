@@ -33,9 +33,7 @@ def main(cfg: DictConfig):
     datamodule = DataModule(data_dir, cfg, cv)
 
     # Model  ####################################################################
-    net = DenseModel(cfg,
-                     in_features=len(datamodule.feature_cols),
-                     out_features=len(datamodule.target_cols))
+    net = DenseModel(cfg)
 
     # Comet.ml
     experiment = Experiment(api_key=cfg.comet_ml.api_key,

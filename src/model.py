@@ -8,11 +8,11 @@ class DenseModel(nn.Module):
         self.block = nn.Sequential(
             nn.Linear(in_features, cfg.train.hidden_size),
             nn.BatchNorm1d(cfg.train.hidden_size),
-            nn.Dropout(cfg.train.dropout_rate),
+            nn.Dropout(cfg.train.dropout_rate, inplace=True),
             nn.PReLU(),
             nn.Linear(cfg.train.hidden_size, cfg.train.hidden_size),
             nn.BatchNorm1d(cfg.train.hidden_size),
-            nn.Dropout(cfg.train.dropout_rate),
+            nn.Dropout(cfg.train.dropout_rate, inplace=True),
             nn.PReLU()
         )
         self.last = nn.Linear(cfg.train.hidden_size, out_features)

@@ -50,7 +50,6 @@ if __name__ == '__main__':
 
     train = df[df['is_train'] == 1]
 
-
     dataset = MoADataset(train, feature_cols, target_cols)
 
     f, t = dataset.__getitem__(8)

@@ -75,7 +75,7 @@ class DataModule(pl.LightningDataModule):
         return DataLoader(self.val_dataset,
                           batch_size=self.cfg.train.batch_size,
                           pin_memory=True,
-                          sampler=SequentialSampler(self.val_dataset), drop_last=False)
+                          sampler=SequentialSampler(self.val_dataset), drop_last=True)
 
     def test_dataloader(self):
         return DataLoader(self.test_dataset,
@@ -142,7 +142,7 @@ class LightningSystem(pl.LightningModule):
         # Save Weights
         if self.best_loss > avg_loss:
             self.best_loss = avg_loss
-            filename = f'{self.cfg.exp.exp_name}_epoch_{self.epoch_num}_loss_{self.best_loss:.3f}.pth'
+            filename = f'{self.cfg.exp.exp_name}_epoch_{self.epoch_num}_loss_{self.best_loss:.5f}.pth'
             torch.save(self.net.state_dict(), filename)
             self.experiment.log_model(name=filename, file_or_folder='./'+filename)
             os.remove(filename)
