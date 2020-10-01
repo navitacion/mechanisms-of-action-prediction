@@ -1,0 +1,19 @@
+hydra:
+  run:
+    dir: hydra_output/
+
+comet_ml:
+  api_key: LSTIie51umcysQtnef1Zzil6V
+  project_name: moa-prediction
+
+exp:
+  exp_name: test
+
+train:
+  batch_size: 64
+  hidden_size: 1024
+  dropout_rate: 0.2
+  epoch: 5
+  seed: 42
+  fold: 0
+  lr: 0.00005
