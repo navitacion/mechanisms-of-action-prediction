@@ -7,6 +7,4 @@ services:
       - ./:/workspace
     working_dir: /workspace
     tty: true
-    ports:
-      - "8888:8888"
     command: bash

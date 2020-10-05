@@ -12,8 +12,8 @@ exp:
 train:
   batch_size: 128
   hidden_size: 2048
-  dropout_rate: 0.4
+  dropout_rate: 0.2
   epoch: 20
   seed: 42
   fold: 0
-  lr: 0.00005
+  lr: 0.001

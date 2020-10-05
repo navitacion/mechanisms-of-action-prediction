@@ -4,8 +4,8 @@ import hydra
 from omegaconf import DictConfig
 from sklearn.model_selection import KFold
 
-from src.lightning_2 import LightningSystem, DataModule
-from src.model import DenseModel, TablarNet
+from src.lightning import LightningSystem, DataModule
+from src.model import TablarNet
 from src.utils import seed_everything
 from pytorch_lightning import Trainer
 from comet_ml import Experiment

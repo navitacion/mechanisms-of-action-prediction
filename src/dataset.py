@@ -1,43 +1,17 @@
-from torch.utils.data import DataLoader, Dataset
-import torch
 import os
 import pandas as pd
-from category_encoders import OrdinalEncoder
+from torch.utils.data import Dataset
+import torch
 
+from .utils import Encode
 
 class MoADataset(Dataset):
-    def __init__(self, df, feature_cols, target_cols, phase='train'):
-        self.df = df
-        self.feature_cols = feature_cols
-        self.target_cols = target_cols
-        self.phase = phase
-
-    def __len__(self):
-        return len(self.df)
-
-    def __getitem__(self, idx):
-        feature = self.df[self.feature_cols].iloc[idx]
-        feature = torch.tensor(feature.values, dtype=torch.float32)
-        if self.phase != 'test':
-            target = self.df[self.target_cols].iloc[idx]
-            target = torch.tensor(target.values, dtype=torch.float32)
-
-            return feature, target
-
-        else:
-            return feature
-
-
-
-
-class MoADataset_2(Dataset):
     def __init__(self, df, feature_cols, target_cols, phase='train'):
         self.df = df
         self.cat_cols = ['cp_type', 'cp_time', 'cp_dose']
         self.cont_cols = [c for c in feature_cols if c not in self.cat_cols]
         self.target_cols = target_cols
         self.phase = phase
-
 
     def __len__(self):
         return len(self.df)
@@ -60,34 +34,35 @@ class MoADataset_2(Dataset):
 
 
 
-if __name__ == '__main__':
-    data_dir = '../input'
-    train_target = pd.read_csv(os.path.join(data_dir, 'train_targets_scored.csv'))
-    train_feature = pd.read_csv(os.path.join(data_dir, 'train_features.csv'))
+class MoADataset_2(Dataset):
+    def __init__(self, df, feature_cols, target_cols, phase='train'):
+        self.df = df
+        self.cat_cols = ['cp_type', 'cp_time', 'cp_dose']
+        self.g_cols = [c for c in feature_cols if 'g-' in c]
+        self.c_cols = [c for c in feature_cols if 'c-' in c]
+        self.target_cols = target_cols
+        self.phase = phase
 
-    test = pd.read_csv(os.path.join(data_dir, 'test_features.csv'))
-    train = pd.merge(train_target, train_feature, on='sig_id')
-    target_cols = [c for c in train_target.columns if c != 'sig_id']
-    feature_cols = [c for c in train_feature.columns if c != 'sig_id']
 
-    test['is_train'] = 0
-    train['is_train'] = 1
-    df = pd.concat([train, test], axis=0, ignore_index=True)
+    def __len__(self):
+        return len(self.df)
 
-    # Label Encoder
-    cols = ['cp_type', 'cp_time', 'cp_dose']
-    encoder = OrdinalEncoder(cols=cols)
-    df = encoder.fit_transform(df)
+    def __getitem__(self, idx):
+        g_f = self.df[self.g_cols].iloc[idx]
+        g_f = torch.tensor(g_f.values, dtype=torch.float32)
 
-    print(df[['cp_type', 'cp_time', 'cp_dose']].head(10))
+        c_f = self.df[self.c_cols].iloc[idx]
+        c_f = torch.tensor(c_f.values, dtype=torch.float32)
 
-    train = df[df['is_train'] == 1]
+        cat_f = self.df[self.cat_cols].iloc[idx]
+        cat_f = torch.tensor(cat_f.values, dtype=torch.long)
 
-    dataset = MoADataset_2(train, feature_cols, target_cols)
+        if self.phase != 'test':
+            target = self.df[self.target_cols].iloc[idx]
+            target = torch.tensor(target.values, dtype=torch.float32)
 
-    cont_f, cat_f, t = dataset.__getitem__(8)
+            return g_f, c_f, cat_f, target
 
-    print(cont_f.size())
-    print(cat_f.size())
-    print(t)
-    print(dataset.__len__())
+        else:
+            return g_f, c_f, cat_f
+

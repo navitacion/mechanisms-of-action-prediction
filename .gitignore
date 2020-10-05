@@ -1,0 +1,5 @@
+.idea/*
+hydra_output/*
+input/*
+multirun/*
+src/__pycache__/*
