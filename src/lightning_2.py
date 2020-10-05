@@ -7,7 +7,7 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 import os
-from .dataset import MoADataset
+from .dataset import MoADataset_2
 from .utils import Encode
 
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
@@ -55,9 +55,9 @@ class DataModule(pl.LightningDataModule):
         train = df[df['fold'] != fold].reset_index(drop=True)
         val = df[df['fold'] == fold].reset_index(drop=True)
 
-        self.train_dataset = MoADataset(train, self.feature_cols, self.target_cols, phase='train')
-        self.val_dataset = MoADataset(val, self.feature_cols, self.target_cols, phase='train')
-        self.test_dataset = MoADataset(test, self.feature_cols, self.target_cols, phase='test')
+        self.train_dataset = MoADataset_2(train, self.feature_cols, self.target_cols, phase='train')
+        self.val_dataset = MoADataset_2(val, self.feature_cols, self.target_cols, phase='train')
+        self.test_dataset = MoADataset_2(test, self.feature_cols, self.target_cols, phase='test')
 
         del df, test, train, val
         gc.collect()
@@ -98,12 +98,12 @@ class LightningSystem(pl.LightningModule):
 
         return [self.optimizer], [self.scheduler]
 
-    def forward(self, x):
-        return self.net(x)
+    def forward(self, cont_f, cat_f):
+        return self.net(cont_f, cat_f)
 
     def step(self, batch):
-        inp, label = batch
-        out = self.forward(inp)
+        cont_f, cat_f, label = batch
+        out = self.forward(cont_f, cat_f)
         loss = self.criterion(out, label)
 
         return loss, label, torch.sigmoid(out)
@@ -145,32 +145,3 @@ class LightningSystem(pl.LightningModule):
             os.remove(filename)
 
         return {'avg_val_loss': avg_loss}
-
-    def test_step(self, batch, batch_idx):
-        inp, img_name = batch
-        out = self.forward(inp)
-        logits = torch.sigmoid(out)
-
-        return {'preds': logits, 'image_names': img_name}
-
-    def test_epoch_end(self, outputs):
-        PREDS = torch.cat([x['preds'] for x in outputs]).reshape((-1)).detach().cpu().numpy()
-        # [tuple, tuple]
-        IMG_NAMES = [x['image_names'] for x in outputs]
-        # [list, list]
-        IMG_NAMES = [list(x) for x in IMG_NAMES]
-        IMG_NAMES = list(itertools.chain.from_iterable(IMG_NAMES))
-
-        res = pd.DataFrame({
-            'image_name': IMG_NAMES,
-            'target': PREDS
-        })
-        try:
-            res['target'] = res['target'].apply(lambda x: x.replace('[', '').replace(']', ''))
-        except:
-            pass
-        N = len(glob.glob(f'submission_{self.cfg.exp.exp_name}*.csv'))
-        filename = f'submission_{self.cfg.exp.exp_name}_{N}.csv'
-        res.to_csv(filename, index=False)
-
-        return {'res': res}

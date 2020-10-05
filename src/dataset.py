@@ -29,6 +29,37 @@ class MoADataset(Dataset):
 
 
 
+
+class MoADataset_2(Dataset):
+    def __init__(self, df, feature_cols, target_cols, phase='train'):
+        self.df = df
+        self.cat_cols = ['cp_type', 'cp_time', 'cp_dose']
+        self.cont_cols = [c for c in feature_cols if c not in self.cat_cols]
+        self.target_cols = target_cols
+        self.phase = phase
+
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        cont_f = self.df[self.cont_cols].iloc[idx]
+        cont_f = torch.tensor(cont_f.values, dtype=torch.float32)
+
+        cat_f = self.df[self.cat_cols].iloc[idx]
+        cat_f = torch.tensor(cat_f.values, dtype=torch.long)
+
+        if self.phase != 'test':
+            target = self.df[self.target_cols].iloc[idx]
+            target = torch.tensor(target.values, dtype=torch.float32)
+
+            return cont_f, cat_f, target
+
+        else:
+            return cont_f, cat_f
+
+
+
 if __name__ == '__main__':
     data_dir = '../input'
     train_target = pd.read_csv(os.path.join(data_dir, 'train_targets_scored.csv'))
@@ -48,14 +79,15 @@ if __name__ == '__main__':
     encoder = OrdinalEncoder(cols=cols)
     df = encoder.fit_transform(df)
 
+    print(df[['cp_type', 'cp_time', 'cp_dose']].head(10))
+
     train = df[df['is_train'] == 1]
 
-    dataset = MoADataset(train, feature_cols, target_cols)
+    dataset = MoADataset_2(train, feature_cols, target_cols)
 
-    f, t = dataset.__getitem__(8)
+    cont_f, cat_f, t = dataset.__getitem__(8)
 
-    print(f.size())
-    print(f)
-    print(t.size())
+    print(cont_f.size())
+    print(cat_f.size())
     print(t)
     print(dataset.__len__())
