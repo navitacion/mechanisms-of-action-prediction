@@ -79,9 +79,6 @@ class TablarNet(nn.Module):
 
         cont_x = self.first_bn_layer(cont_f)
 
-        print(cont_x.size())
-        print(cat_x.size())
-
         x = torch.cat([cont_x, cat_x], 1)
 
         x = self.block(x)
