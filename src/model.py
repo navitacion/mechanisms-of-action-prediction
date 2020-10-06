@@ -67,33 +67,36 @@ class TablarNet(nn.Module):
         return x
 
 
-
 class MyNet(nn.Module):
-    def __init__(self, emb_dims, dropout_rate, g_features=772, c_features=100):
+    def __init__(self, emb_dims, cfg, g_features=772, c_features=100, out_features=206):
         super(MyNet, self).__init__()
 
         self.embedding_layer = nn.ModuleList([nn.Embedding(x, y) for x, y in emb_dims])
-        self.dropout = nn.Dropout(dropout_rate, inplace=True)
+        self.dropout = nn.Dropout(cfg.train.dropout_rate, inplace=True)
 
         self.g_block = nn.Sequential(
             nn.BatchNorm1d(g_features),
-            nn.Linear(g_features, 1024),
-            nn.ReLU(inplace=True),
-            nn.BatchNorm1d(1024),
-            nn.Dropout(dropout_rate),
-            nn.Linear(1024, 512),
-            nn.ReLU(inplace=True),
+            LinearReluBnDropout(g_features, cfg.train.hidden_size, cfg.train.dropout_rate),
+            LinearReluBnDropout(cfg.train.hidden_size, cfg.train.hidden_size // 2, cfg.train.dropout_rate),
         )
 
         self.c_block = nn.Sequential(
             nn.BatchNorm1d(c_features),
-            nn.Linear(c_features, 1024),
-            nn.ReLU(inplace=True),
-            nn.BatchNorm1d(1024),
-            nn.Dropout(dropout_rate),
-            nn.Linear(1024, 512),
-            nn.ReLU(inplace=True),
+            LinearReluBnDropout(c_features, cfg.train.hidden_size, cfg.train.dropout_rate),
+            LinearReluBnDropout(cfg.train.hidden_size, cfg.train.hidden_size // 2, cfg.train.dropout_rate),
         )
+
+        after_cat_in_feature = cfg.train.hidden_size + sum([y for x, y in emb_dims])
+
+        self.all_block = nn.Sequential(
+            nn.BatchNorm1d(after_cat_in_feature),
+            LinearReluBnDropout(after_cat_in_feature, cfg.train.hidden_size*2, cfg.train.dropout_rate),
+            LinearReluBnDropout(cfg.train.hidden_size*2, cfg.train.hidden_size, cfg.train.dropout_rate),
+            LinearReluBnDropout(cfg.train.hidden_size, cfg.train.hidden_size//2, cfg.train.dropout_rate),
+            LinearReluBnDropout(cfg.train.hidden_size//2, cfg.train.hidden_size//4, cfg.train.dropout_rate),
+        )
+
+        self.last = nn.Linear(cfg.train.hidden_size//4, out_features)
 
     def forward(self, g, c, cat_f):
         cat_x = [layer(cat_f[:, i]) for i, layer in enumerate(self.embedding_layer)]
@@ -103,13 +106,12 @@ class MyNet(nn.Module):
         g_x = self.g_block(g)
         c_x = self.c_block(c)
 
-        print(g_x.size())
-        print(c_x.size())
+        x = torch.cat([g_x, c_x, cat_x], 1)
 
-        # x = torch.cat([g_x, c_x], -1)
-        x = torch.stack([g_x, c_x], 2)
+        x = self.all_block(x)
+        x = self.last(x)
 
-        print(x.size())
+        return x
 
 
 

@@ -4,8 +4,8 @@ import hydra
 from omegaconf import DictConfig
 from sklearn.model_selection import KFold
 
-from src.lightning import LightningSystem, DataModule
-from src.model import TablarNet
+from src.lightning_2 import LightningSystem, DataModule
+from src.model import TablarNet, MyNet
 from src.utils import seed_everything
 from pytorch_lightning import Trainer
 from comet_ml import Experiment
@@ -34,7 +34,7 @@ def main(cfg: DictConfig):
 
     # Model  ####################################################################
     emb_dims = [(2, 15), (3, 20), (2, 15)]
-    net = TablarNet(emb_dims, cfg)
+    net = MyNet(emb_dims, cfg)
 
     # Comet.ml
     experiment = Experiment(api_key=cfg.comet_ml.api_key,
