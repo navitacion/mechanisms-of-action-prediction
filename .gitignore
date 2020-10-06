@@ -1,5 +1,6 @@
 .idea/*
 hydra_output/*
 input/*
+checkpoint/*
 multirun/*
 src/__pycache__/*
