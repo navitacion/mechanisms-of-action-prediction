@@ -1,6 +1,8 @@
+.venv/*
 .idea/*
 hydra_output/*
 input/*
 checkpoint/*
 multirun/*
 src/__pycache__/*
+notebook/.ipynb_checkpoints/*
