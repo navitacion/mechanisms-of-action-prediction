@@ -27,18 +27,18 @@ class LinearReluBnDropout(nn.Module):
 
 
 class TablarNet(nn.Module):
-    def __init__(self, emb_dims, cfg, in_features=875, out_features=206):
+    def __init__(self, emb_dims, cfg, in_cont_features=875, out_features=206):
         super(TablarNet, self).__init__()
 
         self.embedding_layer = nn.ModuleList([nn.Embedding(x, y) for x, y in emb_dims])
         self.dropout = nn.Dropout(cfg.train.dropout_rate, inplace=True)
 
         self.first_bn_layer = nn.Sequential(
-            nn.BatchNorm1d(872),
+            nn.BatchNorm1d(in_cont_features),
             nn.Dropout(cfg.train.dropout_rate)
         )
 
-        first_in_feature = in_features - 3 + sum([y for x, y in emb_dims])
+        first_in_feature = in_cont_features + sum([y for x, y in emb_dims])
 
         self.block = nn.Sequential(
             LinearReluBnDropout(in_features=first_in_feature,

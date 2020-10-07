@@ -3,8 +3,9 @@ import glob
 import hydra
 from omegaconf import DictConfig
 from sklearn.model_selection import KFold
+from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 
-from src.lightning_2 import LightningSystem, DataModule
+from src.lightning import LightningSystem, DataModule
 from src.model import TablarNet, MyNet
 from src.utils import seed_everything
 from pytorch_lightning import Trainer
@@ -19,7 +20,8 @@ warnings.filterwarnings('ignore')
 # Input Data Directory
 data_dir = './input'
 # CV
-cv = KFold(n_splits=4, shuffle=True)
+# cv = KFold(n_splits=4, shuffle=True)
+cv = MultilabelStratifiedKFold(n_splits=4)
 
 
 @hydra.main('config.yml')
@@ -34,7 +36,9 @@ def main(cfg: DictConfig):
 
     # Model  ####################################################################
     emb_dims = [(2, 15), (3, 20), (2, 15)]
-    net = MyNet(emb_dims, cfg)
+    # Adjust input dim (original + composition dim - category features)
+    in_features = 875 + cfg.train.g_comp + cfg.train.c_comp - 3
+    net = TablarNet(emb_dims, cfg, in_cont_features=in_features)
 
     # Comet.ml
     experiment = Experiment(api_key=cfg.comet_ml.api_key,

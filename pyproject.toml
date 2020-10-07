@@ -18,6 +18,7 @@ jupyter = "^1.0.0"
 jupyterlab = "^2.2.8"
 opencv-python = "^4.4.0"
 category_encoders = "^2.2.2"
+iterative-stratification = "^0.1.6"
 
 [tool.poetry.dev-dependencies]
 

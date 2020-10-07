@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 import os
 from .dataset import MoADataset
-from .utils import Encode
+from .utils import Encode, add_PCA
 
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -29,7 +29,6 @@ class DataModule(pl.LightningDataModule):
 
         train = pd.merge(train_target, train_feature, on='sig_id')
         self.target_cols = [c for c in train_target.columns if c != 'sig_id']
-        self.feature_cols = [c for c in train_feature.columns if c != 'sig_id']
 
         test['is_train'] = 0
         train['is_train'] = 1
@@ -40,8 +39,10 @@ class DataModule(pl.LightningDataModule):
         gc.collect()
 
     def setup(self, stage=None):
-        # Label Encoder
+        # Preprocessing
         self.df = Encode(self.df)
+        self.df = add_PCA(self.df, g_comp=self.cfg.train.g_comp, c_comp=self.cfg.train.c_comp, seed=self.cfg.train.seed)
+        self.feature_cols = [c for c in self.df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'fold']]
 
         # Split Train, Test
         df = self.df[self.df['is_train'] == 1].reset_index(drop=True)
@@ -49,7 +50,7 @@ class DataModule(pl.LightningDataModule):
 
         # Split Train, Validation
         df['fold'] = -1
-        for i, (trn_idx, val_idx) in enumerate(self.cv.split(df)):
+        for i, (trn_idx, val_idx) in enumerate(self.cv.split(df, df[self.target_cols])):
             df.loc[val_idx, 'fold'] = i
         fold = self.cfg.train.fold
         train = df[df['fold'] != fold].reset_index(drop=True)

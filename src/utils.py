@@ -2,6 +2,9 @@ import random
 import os
 import numpy as np
 import pandas as pd
+from sklearn.decomposition import PCA
+
+
 import torch
 
 
@@ -38,5 +41,24 @@ def Encode(df):
 
     for c in ['cp_type', 'cp_time', 'cp_dose']:
         df[c] = df[c].astype(int)
+
+    return df
+
+
+def add_PCA(df, g_comp=29, c_comp=4, seed=0):
+
+    # g-features
+    g_cols = [c for c in df.columns if 'g-' in c]
+    temp = PCA(n_components=g_comp, random_state=seed).fit_transform(df[g_cols])
+    temp = pd.DataFrame(temp, columns=[f'g-pca_{i}' for i in range(g_comp)])
+    df = pd.concat([df, temp], axis=1)
+
+    # c-features
+    c_cols = [c for c in df.columns if 'c-' in c]
+    temp = PCA(n_components=c_comp, random_state=seed).fit_transform(df[c_cols])
+    temp = pd.DataFrame(temp, columns=[f'c-pca_{i}' for i in range(c_comp)])
+    df = pd.concat([df, temp], axis=1)
+
+    del temp
 
     return df
