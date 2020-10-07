@@ -145,4 +145,7 @@ class LightningSystem(pl.LightningModule):
             self.experiment.log_model(name=filename, file_or_folder='./'+filename)
             os.remove(filename)
 
+            logs_best = {'val/best_loss': self.best_loss.item()}
+            self.experiment.log_metrics(logs_best, step=1)
+
         return {'avg_val_loss': avg_loss}
