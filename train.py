@@ -6,7 +6,7 @@ from sklearn.model_selection import KFold
 from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 
 from src.lightning import LightningSystem, DataModule
-from src.model import TablarNet, MyNet
+from src.model import TablarNet, TablarNet_2
 from src.utils import seed_everything
 from pytorch_lightning import Trainer
 from comet_ml import Experiment
@@ -20,7 +20,6 @@ warnings.filterwarnings('ignore')
 # Input Data Directory
 data_dir = './input'
 # CV
-# cv = KFold(n_splits=4, shuffle=True)
 cv = MultilabelStratifiedKFold(n_splits=4)
 
 
@@ -33,12 +32,14 @@ def main(cfg: DictConfig):
 
     # Lightning Data Module  ####################################################
     datamodule = DataModule(data_dir, cfg, cv)
+    datamodule.prepare_data()
+    target_cols = datamodule.target_cols
 
     # Model  ####################################################################
     emb_dims = [(2, 15), (3, 20), (2, 15)]
     # Adjust input dim (original + composition dim - category features)
     in_features = 875 + cfg.train.g_comp + cfg.train.c_comp - 3
-    net = TablarNet(emb_dims, cfg, in_cont_features=in_features)
+    net = TablarNet_2(emb_dims, cfg, in_cont_features=in_features)
 
     # Comet.ml
     experiment = Experiment(api_key=cfg.comet_ml.api_key,
@@ -50,7 +51,7 @@ def main(cfg: DictConfig):
     experiment.set_model_graph(str(net))
 
     # Lightning Module  #########################################################
-    model = LightningSystem(net, cfg, experiment)
+    model = LightningSystem(net, cfg, experiment, target_cols)
 
     checkpoint_callback = ModelCheckpoint(
         filepath='./checkpoint',
@@ -71,13 +72,11 @@ def main(cfg: DictConfig):
     # Train & Test  ############################################################
     # Train
     trainer.fit(model, datamodule=datamodule)
-    experiment.log_metric('best_auc', model.best_auc)
     checkpoint_path = glob.glob(f'./checkpoint/{cfg.exp.exp_name}_*.ckpt')[0]
     experiment.log_asset(file_data=checkpoint_path)
 
     # Test
-    # for i in range(test_num):
-    #     trainer.test(model)
+    # trainer.test(model, datamodule=datamodule)
 
 
 if __name__ == '__main__':

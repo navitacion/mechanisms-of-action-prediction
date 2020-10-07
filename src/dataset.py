@@ -30,7 +30,8 @@ class MoADataset(Dataset):
             return cont_f, cat_f, target
 
         else:
-            return cont_f, cat_f
+            sig_id = self.df['sig_id'].iloc[idx]
+            return cont_f, cat_f, sig_id
 
 
 

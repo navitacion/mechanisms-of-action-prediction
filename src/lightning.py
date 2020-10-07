@@ -33,17 +33,16 @@ class DataModule(pl.LightningDataModule):
         test['is_train'] = 0
         train['is_train'] = 1
         self.df = pd.concat([train, test], axis=0, ignore_index=True)
-        self.test_id = test['sig_id'].values
 
-        del train, train_target, train_feature, test
-        gc.collect()
-
-    def setup(self, stage=None):
         # Preprocessing
         self.df = Encode(self.df)
         self.df = add_PCA(self.df, g_comp=self.cfg.train.g_comp, c_comp=self.cfg.train.c_comp, seed=self.cfg.train.seed)
         self.feature_cols = [c for c in self.df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'fold']]
 
+        del train, train_target, train_feature, test
+        gc.collect()
+
+    def setup(self, stage=None):
         # Split Train, Test
         df = self.df[self.df['is_train'] == 1].reset_index(drop=True)
         test = self.df[self.df['is_train'] == 0].reset_index(drop=True)
@@ -83,14 +82,14 @@ class DataModule(pl.LightningDataModule):
 
 
 class LightningSystem(pl.LightningModule):
-    def __init__(self, net, cfg, experiment):
+    def __init__(self, net, cfg, experiment, target_cols):
         super(LightningSystem, self).__init__()
         self.net = net
         self.cfg = cfg
         self.experiment = experiment
+        self.target_cols = target_cols
         self.criterion = nn.BCEWithLogitsLoss()
         self.best_loss = 1e+9
-        self.best_auc = None
         self.epoch_num = 0
 
     def configure_optimizers(self):
@@ -146,3 +145,25 @@ class LightningSystem(pl.LightningModule):
             os.remove(filename)
 
         return {'avg_val_loss': avg_loss}
+
+    def test_step(self, batch, batch_idx):
+        cont_f, cat_f, ids = batch
+        out = self.forward(cont_f, cat_f)
+        logits = torch.sigmoid(out)
+
+        return {'pred': logits, 'id': ids}
+
+
+    def test_epoch_end(self, outputs):
+        preds = torch.cat([x['pred'] for x in outputs]).detach().cpu().numpy()
+        res = pd.DataFrame(preds, columns=self.target_cols)
+
+        ids = [x['id'] for x in outputs]
+        ids = [list(x) for x in ids]
+        ids = list(itertools.chain.from_iterable(ids))
+
+        res.insert(0, 'sig_id', ids)
+
+        res.to_csv(os.path.join('./output', self.cfg.exp.exp_name + '.csv'), index=False)
+
+        return {}
