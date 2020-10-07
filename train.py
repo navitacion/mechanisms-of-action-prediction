@@ -11,7 +11,7 @@ from src.utils import seed_everything
 from pytorch_lightning import Trainer
 from comet_ml import Experiment
 
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -62,10 +62,19 @@ def main(cfg: DictConfig):
         prefix=cfg.exp.exp_name + '_'
     )
 
+    early_stop_callback = EarlyStopping(
+        monitor='avg_val_loss',
+        min_delta=0.00,
+        patience=3,
+        verbose=False,
+        mode='min'
+    )
+
     trainer = Trainer(
         logger=False,
         max_epochs=cfg.train.epoch,
         checkpoint_callback=checkpoint_callback,
+        early_stop_callback=early_stop_callback,
         # gpus=1
             )
 

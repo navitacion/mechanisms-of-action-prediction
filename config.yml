@@ -7,7 +7,7 @@ comet_ml:
   project_name: moa-prediction
 
 exp:
-  exp_name: tablarnet_add_pca
+  exp_name: test
 
 train:
   g_comp: 29
@@ -15,7 +15,7 @@ train:
   batch_size: 128
   hidden_size: 2048
   dropout_rate: 0.4
-  epoch: 20
+  epoch: 30
   seed: 42
   fold: 0
   lr: 0.001
