@@ -107,27 +107,27 @@ class LightningSystem(pl.LightningModule):
         out = self.forward(cont_f, cat_f)
         loss = self.criterion(out, label)
 
-        return loss, label, torch.sigmoid(out)
+        return loss, label
 
     def training_step(self, batch, batch_idx):
-        loss, label, logits = self.step(batch)
+        loss, label = self.step(batch)
 
         logs = {'train/loss': loss.item()}
         # batch_idx + Epoch * Iteration
         step = batch_idx
         self.experiment.log_metrics(logs, step=step)
 
-        return {'loss': loss, 'logits': logits, 'labels': label}
+        return {'loss': loss, 'labels': label}
 
     def validation_step(self, batch, batch_idx):
-        loss, label, logits = self.step(batch)
+        loss, label = self.step(batch)
 
         val_logs = {'val/loss': loss.item()}
         # batch_idx + Epoch * Iteration
         step = batch_idx
         self.experiment.log_metrics(val_logs, step=step)
 
-        return {'val_loss': loss, 'logits': logits.detach(), 'labels': label.detach()}
+        return {'val_loss': loss, 'labels': label.detach()}
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
@@ -146,6 +146,6 @@ class LightningSystem(pl.LightningModule):
             os.remove(filename)
 
             logs_best = {'val/best_loss': self.best_loss.item()}
-            self.experiment.log_metrics(logs_best, step=1)
+            self.experiment.log_metrics(logs_best)
 
         return {'avg_val_loss': avg_loss}
