@@ -1,17 +1,19 @@
-import pandas as pd
-import itertools
-import glob
+import os
 import gc
+import glob
+import itertools
+import pandas as pd
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler, RobustScaler
+
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
-import os
-from .dataset import MoADataset
-from .utils import Encode, add_PCA
-
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from torch.optim.lr_scheduler import CosineAnnealingLR
+
+from .dataset import MoADataset
 
 
 class DataModule(pl.LightningDataModule):
@@ -20,6 +22,66 @@ class DataModule(pl.LightningDataModule):
         self.cfg = cfg
         self.data_dir = data_dir
         self.cv = cv
+
+    def Encode(self, df):
+        cp_type_encoder = {
+            'trt_cp': 0,
+            'ctl_vehicle': 1
+        }
+
+        cp_time_encoder = {
+            48: 1,
+            72: 2,
+            24: 0
+        }
+
+        cp_dose_encoder = {
+            'D1': 0,
+            'D2': 1
+        }
+
+        df['cp_type'] = df['cp_type'].map(cp_type_encoder)
+        df['cp_time'] = df['cp_time'].map(cp_time_encoder)
+        df['cp_dose'] = df['cp_dose'].map(cp_dose_encoder)
+
+        for c in ['cp_type', 'cp_time', 'cp_dose']:
+            df[c] = df[c].astype(int)
+
+        return df
+
+
+    def add_PCA(self, df, cfg):
+        # g-features
+        g_cols = [c for c in df.columns if 'g-' in c]
+        temp = PCA(n_components=cfg.train.g_comp, random_state=cfg.train.seed).fit_transform(df[g_cols])
+        temp = pd.DataFrame(temp, columns=[f'g-pca_{i}' for i in range(cfg.train.g_comp)])
+        df = pd.concat([df, temp], axis=1)
+
+        # c-features
+        c_cols = [c for c in df.columns if 'c-' in c]
+        temp = PCA(n_components=cfg.train.c_comp, random_state=cfg.train.seed).fit_transform(df[c_cols])
+        temp = pd.DataFrame(temp, columns=[f'c-pca_{i}' for i in range(cfg.train.c_comp)])
+        df = pd.concat([df, temp], axis=1)
+
+        del temp
+
+        return df
+
+
+    def scaler(self, df, feature_cols, type='standard'):
+        for c in feature_cols:
+            if c in ['cp_type', 'cp_time', 'cp_dose']:
+                continue
+
+            if type == 'standard':
+                scaler = StandardScaler()
+            elif type == 'robust':
+                scaler = RobustScaler()
+            else:
+                scaler = None
+            df[c] = scaler.fit_transform(df[c].values.reshape((-1, 1)))
+
+        return df
 
     def prepare_data(self):
         # Prepare Data
@@ -35,9 +97,10 @@ class DataModule(pl.LightningDataModule):
         self.df = pd.concat([train, test], axis=0, ignore_index=True)
 
         # Preprocessing
-        self.df = Encode(self.df)
-        self.df = add_PCA(self.df, g_comp=self.cfg.train.g_comp, c_comp=self.cfg.train.c_comp, seed=self.cfg.train.seed)
-        self.feature_cols = [c for c in self.df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'fold']]
+        self.df = self.Encode(self.df)
+        self.df = self.add_PCA(self.df, self.cfg)
+        self.feature_cols = [c for c in self.df.columns if c not in self.target_cols + ['sig_id', 'is_train']]
+        # self.df = self.scaler(self.df, self.feature_cols, type='standard')
 
         del train, train_target, train_feature, test
         gc.collect()

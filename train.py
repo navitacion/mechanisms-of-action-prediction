@@ -6,7 +6,7 @@ from sklearn.model_selection import KFold
 from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 
 from src.lightning import LightningSystem, DataModule
-from src.model import TablarNet, TablarNet_2
+from src.model import TablarNet, TablarNet_2, TablarNet_res
 from src.utils import seed_everything
 from pytorch_lightning import Trainer
 from comet_ml import Experiment
@@ -39,7 +39,7 @@ def main(cfg: DictConfig):
     emb_dims = [(2, 15), (3, 20), (2, 15)]
     # Adjust input dim (original + composition dim - category features)
     in_features = 875 + cfg.train.g_comp + cfg.train.c_comp - 3
-    net = TablarNet_2(emb_dims, cfg, in_cont_features=in_features)
+    net = TablarNet_res(emb_dims, cfg, in_cont_features=in_features)
 
     # Comet.ml
     experiment = Experiment(api_key=cfg.comet_ml.api_key,

@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 from src.utils import Encode, add_PCA
 from src.dataset import MoADataset
-from src.model import TablarNet
+from src.model import TablarNet, TablarNet_res
 
 pd.set_option('display.max_rows', None)
 
@@ -23,6 +23,7 @@ def main(cfg: DictConfig):
     target_cols = [c for c in train_target.columns if c != 'sig_id']
     df = Encode(df)
     df = add_PCA(df)
+
     feature_cols = [c for c in df.columns if c not in target_cols + ['sig_id']]
 
     dataset = MoADataset(df, feature_cols, target_cols)
@@ -30,19 +31,16 @@ def main(cfg: DictConfig):
 
     cont_f, cat_f, target = next(iter(dataloader))
 
-    print(cont_f.size())
-    print(cat_f.size())
-
     in_features = 875 + 29 + 4 - 3
     print(in_features)
     emb_dims = [(2, 15), (3, 20), (2, 15)]
-    net = TablarNet(emb_dims, cfg, in_cont_features=in_features, out_features=206)
+    net = TablarNet_res(emb_dims, cfg, in_cont_features=in_features, out_features=206)
 
     out = net(cont_f, cat_f)
     print(out.size())
-    criterion = nn.BCEWithLogitsLoss()
-    loss = criterion(out, target)
-    print(loss)
+    # criterion = nn.BCEWithLogitsLoss()
+    # loss = criterion(out, target)
+    # print(loss)
 
 
 
