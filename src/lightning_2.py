@@ -109,7 +109,7 @@ class DataModule(pl.LightningDataModule):
 
         # Preprocessing
         # self.df = self._Encode(self.df)
-        self._get_dummies(self.df)
+        self.df = self._get_dummies(self.df)
         self.df = self._add_PCA(self.df, self.cfg)
         self.feature_cols = [c for c in self.df.columns if c not in self.target_cols + ['sig_id', 'is_train']]
         # self.df = self._scaler(self.df, self.feature_cols, type='standard')

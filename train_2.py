@@ -32,11 +32,10 @@ def main(cfg: DictConfig):
     datamodule = DataModule(data_dir, cfg, cv)
     datamodule.prepare_data()
     target_cols = datamodule.target_cols
+    feature_cols = datamodule.feature_cols
 
     # Model  ####################################################################
-    # Adjust input dim (original + composition dim - category features)
-    in_features = 875 + cfg.train.g_comp + cfg.train.c_comp - 3
-    net = SimpleDenseNet(cfg, in_features=in_features)
+    net = SimpleDenseNet(cfg, in_features=len(feature_cols))
 
     # Comet.ml
     experiment = Experiment(api_key=cfg.comet_ml.api_key,
