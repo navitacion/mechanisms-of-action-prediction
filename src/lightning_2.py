@@ -46,7 +46,6 @@ class DataModule(pl.LightningDataModule):
 
     def _get_dummies(self, df):
         df = pd.get_dummies(df, columns=['cp_time','cp_dose'])
-        df.drop(['cp_time','cp_dose'], axis=1, inplace=True)
         return df
 
     def _add_PCA(self, df, cfg):
