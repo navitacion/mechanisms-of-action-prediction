@@ -58,5 +58,22 @@ def main(cfg: DictConfig):
 
 
 
+import torch
+
+def check():
+
+    a = torch.randn((3, 224, 224))
+
+    print(torch.cuda.is_available())
+
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+    a = a.to(device)
+
+    print(a)
+
+
+
 if __name__ == '__main__':
-    main()
+    # main()
+    check()

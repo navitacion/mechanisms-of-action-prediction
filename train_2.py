@@ -36,6 +36,7 @@ def main(cfg: DictConfig):
 
     # Model  ####################################################################
     net = SimpleDenseNet(cfg, in_features=len(feature_cols))
+    net = net.cuda()
 
     # Comet.ml
     experiment = Experiment(api_key=cfg.comet_ml.api_key,
@@ -71,7 +72,7 @@ def main(cfg: DictConfig):
         max_epochs=cfg.train.epoch,
         checkpoint_callback=checkpoint_callback,
         early_stop_callback=early_stop_callback,
-        # gpus=[0],
+        gpus=[0],
         # resume_from_checkpoint='./tablarnet_res_no_scaler_epoch=25.ckpt',
             )
 
