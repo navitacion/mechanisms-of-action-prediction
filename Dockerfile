@@ -1,26 +1,21 @@
-FROM ubuntu:20.04
+FROM pytorch/pytorch:1.5.1-cuda10.1-cudnn7-runtime
 
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /workspace
 
-RUN apt-get update && apt-get install -y \
-  cmake \
-  git \
-  python3 \
-  python3-pip \
-  python3-venv
-
-RUN cd /usr/bin/ && ln -s /usr/bin/python3 ./python
-
 COPY ./ ./
 
-# Library Install By Poetry
-RUN pip3 install --upgrade pip
-RUN pip3 install poetry
+RUN apt update && apt -y upgrade && apt install -y \
+  build-essential \
+  cmake \
+  git \
+  libboost-dev \
+  libboost-system-dev \
+  libboost-filesystem-dev
 
-RUN poetry config virtualenvs.create false && poetry install
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # Install LightGBM
 RUN git clone --recursive https://github.com/microsoft/LightGBM && cd LightGBM \
@@ -31,5 +26,7 @@ RUN git clone --recursive https://github.com/microsoft/LightGBM && cd LightGBM \
 
 RUN cd LightGBM/python-package \
   && python setup.py install
+
+RUN rm -r -f LightGBM/
 
 CMD bash

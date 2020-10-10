@@ -87,8 +87,6 @@ class DataModule(pl.LightningDataModule):
 
         return df
 
-
-
     def prepare_data(self):
         # Prepare Data
         train_target = pd.read_csv(os.path.join(self.data_dir, 'train_targets_scored.csv'))

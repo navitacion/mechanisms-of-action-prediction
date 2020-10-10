@@ -71,8 +71,8 @@ def main(cfg: DictConfig):
         max_epochs=cfg.train.epoch,
         checkpoint_callback=checkpoint_callback,
         early_stop_callback=early_stop_callback,
+        # gpus=[0],
         # resume_from_checkpoint='./tablarnet_res_no_scaler_epoch=25.ckpt',
-        # gpus=1
             )
 
     # Train & Test  ############################################################

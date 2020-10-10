@@ -123,30 +123,26 @@ class TablarNet(nn.Module):
 class TablarNet_2(nn.Module):
     def __init__(self, emb_dims, cfg, in_cont_features=875, out_features=206):
         super(TablarNet_2, self).__init__()
+        h = cfg.train.hidden_size
+        d = cfg.train.dropout_rate
 
         self.embedding_layer = nn.ModuleList([nn.Embedding(x, y) for x, y in emb_dims])
         self.dropout = nn.Dropout(cfg.train.dropout_rate, inplace=True)
 
         self.first_bn_layer = nn.Sequential(
             nn.BatchNorm1d(in_cont_features),
-            nn.Dropout(cfg.train.dropout_rate)
+            nn.Dropout(0.2)
         )
 
         first_in_feature = in_cont_features + sum([y for x, y in emb_dims])
 
         self.block = nn.Sequential(
-            LinearReluBnDropout(in_features=first_in_feature,
-                                out_features=cfg.train.hidden_size,
-                                dropout_rate=cfg.train.dropout_rate),
-            LinearReluBnDropout(in_features=cfg.train.hidden_size,
-                                out_features=cfg.train.hidden_size // 2,
-                                dropout_rate=cfg.train.dropout_rate),
-            LinearReluBnDropout(in_features=cfg.train.hidden_size // 2,
-                                out_features=cfg.train.hidden_size // 4,
-                                dropout_rate=cfg.train.dropout_rate)
+            LinearReluBnDropout(in_features=first_in_feature, out_features=h, dropout_rate=d),
+            LinearReluBnDropout(in_features=h, out_features=h // 2, dropout_rate=d),
+            LinearReluBnDropout(in_features=h // 2, out_features=h // 4, dropout_rate=d)
         )
 
-        self.last = nn.Linear(cfg.train.hidden_size // 4, out_features)
+        self.last = nn.Linear(h // 4, out_features)
 
     def forward(self, cont_f, cat_f):
 

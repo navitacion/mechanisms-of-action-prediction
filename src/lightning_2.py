@@ -88,7 +88,6 @@ class DataModule(pl.LightningDataModule):
         return df
 
 
-
     def prepare_data(self):
         # Prepare Data
         train_target = pd.read_csv(os.path.join(self.data_dir, 'train_targets_scored.csv'))
@@ -101,7 +100,6 @@ class DataModule(pl.LightningDataModule):
         test['is_train'] = 0
         train['is_train'] = 1
         self.df = pd.concat([train, test], axis=0, ignore_index=True)
-
 
         # "ctl_vehicle" is not in scope prediction
         self.df = self.df[self.df['cp_type'] != "ctl_vehicle"].reset_index(drop=True)
