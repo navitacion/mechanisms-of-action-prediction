@@ -12,7 +12,7 @@ exp:
 train:
   g_comp: 29
   c_comp: 4
-  batch_size: 256
+  batch_size: 128
   hidden_size: 2048
   dropout_rate: 0.4
   epoch: 50

@@ -7,8 +7,8 @@ from pytorch_lightning import Trainer
 from comet_ml import Experiment
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
-from src.lightning import LightningSystem, DataModule
-from src.model import TablarNet, TablarNet_2, TablarNet_res
+from src.lightning_2 import LightningSystem, DataModule
+from src.model import SimpleDenseNet
 from src.utils import seed_everything
 
 import warnings
@@ -34,10 +34,9 @@ def main(cfg: DictConfig):
     target_cols = datamodule.target_cols
 
     # Model  ####################################################################
-    emb_dims = [(3, 20), (2, 15)]
     # Adjust input dim (original + composition dim - category features)
     in_features = 875 + cfg.train.g_comp + cfg.train.c_comp - 3
-    net = TablarNet_2(emb_dims, cfg, in_cont_features=in_features)
+    net = SimpleDenseNet(cfg, in_features=in_features)
 
     # Comet.ml
     experiment = Experiment(api_key=cfg.comet_ml.api_key,

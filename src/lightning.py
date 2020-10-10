@@ -5,6 +5,7 @@ import itertools
 import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.feature_selection import VarianceThreshold
 
 import torch
 from torch import nn, optim
@@ -23,12 +24,7 @@ class DataModule(pl.LightningDataModule):
         self.data_dir = data_dir
         self.cv = cv
 
-    def Encode(self, df):
-        cp_type_encoder = {
-            'trt_cp': 0,
-            'ctl_vehicle': 1
-        }
-
+    def _Encode(self, df):
         cp_time_encoder = {
             48: 1,
             72: 2,
@@ -40,17 +36,20 @@ class DataModule(pl.LightningDataModule):
             'D2': 1
         }
 
-        df['cp_type'] = df['cp_type'].map(cp_type_encoder)
         df['cp_time'] = df['cp_time'].map(cp_time_encoder)
         df['cp_dose'] = df['cp_dose'].map(cp_dose_encoder)
 
-        for c in ['cp_type', 'cp_time', 'cp_dose']:
+        for c in ['cp_time', 'cp_dose']:
             df[c] = df[c].astype(int)
 
         return df
 
+    def _get_dummies(self, df):
+        df = pd.get_dummies(df, columns=['cp_time','cp_dose'])
+        df.drop(['cp_time','cp_dose'], axis=1, inplace=True)
+        return df
 
-    def add_PCA(self, df, cfg):
+    def _add_PCA(self, df, cfg):
         # g-features
         g_cols = [c for c in df.columns if 'g-' in c]
         temp = PCA(n_components=cfg.train.g_comp, random_state=cfg.train.seed).fit_transform(df[g_cols])
@@ -68,7 +67,7 @@ class DataModule(pl.LightningDataModule):
         return df
 
 
-    def scaler(self, df, feature_cols, type='standard'):
+    def _scaler(self, df, feature_cols, type='standard'):
         for c in feature_cols:
             if c in ['cp_type', 'cp_time', 'cp_dose']:
                 continue
@@ -83,6 +82,14 @@ class DataModule(pl.LightningDataModule):
 
         return df
 
+    def _variancethreshold(self, df, threshold=0.5):
+        var_thresh = VarianceThreshold(threshold=threshold)
+        df = var_thresh.fit_transform(df)
+
+        return df
+
+
+
     def prepare_data(self):
         # Prepare Data
         train_target = pd.read_csv(os.path.join(self.data_dir, 'train_targets_scored.csv'))
@@ -96,11 +103,16 @@ class DataModule(pl.LightningDataModule):
         train['is_train'] = 1
         self.df = pd.concat([train, test], axis=0, ignore_index=True)
 
+        # "ctl_vehicle" is not in scope prediction
+        self.df = self.df[self.df['cp_type'] != "ctl_vehicle"].reset_index(drop=True)
+        self.df.drop(['cp_type'], axis=1, inplace=True)
+
         # Preprocessing
-        self.df = self.Encode(self.df)
-        self.df = self.add_PCA(self.df, self.cfg)
+        self.df = self._Encode(self.df)
+        # self._get_dummies(self.df)
+        self.df = self._add_PCA(self.df, self.cfg)
         self.feature_cols = [c for c in self.df.columns if c not in self.target_cols + ['sig_id', 'is_train']]
-        # self.df = self.scaler(self.df, self.feature_cols, type='standard')
+        # self.df = self._scaler(self.df, self.feature_cols, type='standard')
 
         del train, train_target, train_feature, test
         gc.collect()
@@ -119,7 +131,7 @@ class DataModule(pl.LightningDataModule):
         val = df[df['fold'] == fold].reset_index(drop=True)
 
         self.train_dataset = MoADataset(train, self.feature_cols, self.target_cols, phase='train')
-        self.val_dataset = MoADataset(val, self.feature_cols, self.target_cols, phase='train')
+        self.val_dataset = MoADataset(val, self.feature_cols, self.target_cols, phase='val')
         self.test_dataset = MoADataset(test, self.feature_cols, self.target_cols, phase='test')
 
         del df, test, train, val
@@ -161,18 +173,11 @@ class LightningSystem(pl.LightningModule):
 
         return [self.optimizer], [self.scheduler]
 
-    def forward(self, cont_f, cat_f):
-        return self.net(cont_f, cat_f)
-
-    def step(self, batch):
-        cont_f, cat_f, label = batch
-        out = self.forward(cont_f, cat_f)
-        loss = self.criterion(out, label)
-
-        return loss, label
 
     def training_step(self, batch, batch_idx):
-        loss, label = self.step(batch)
+        cont_f, cat_f, label = batch
+        out = self.net(cont_f, cat_f)
+        loss = self.criterion(out, label)
 
         logs = {'train/loss': loss.item()}
         # batch_idx + Epoch * Iteration
@@ -182,14 +187,17 @@ class LightningSystem(pl.LightningModule):
         return {'loss': loss, 'labels': label}
 
     def validation_step(self, batch, batch_idx):
-        loss, label = self.step(batch)
+        cont_f, cat_f, label, ids = batch
+        out = self.net(cont_f, cat_f)
+        loss = self.criterion(out, label)
+        logit = torch.sigmoid(out)
 
         val_logs = {'val/loss': loss.item()}
         # batch_idx + Epoch * Iteration
         step = batch_idx
         self.experiment.log_metrics(val_logs, step=step)
 
-        return {'val_loss': loss, 'labels': label.detach()}
+        return {'val_loss': loss, 'labels': label.detach(), 'id': ids, 'pred': logit}
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
@@ -206,6 +214,19 @@ class LightningSystem(pl.LightningModule):
             torch.save(self.net.state_dict(), filename)
             self.experiment.log_model(name=filename, file_or_folder='./'+filename)
             os.remove(filename)
+
+            # oof
+            oof_preds = torch.cat([x['pred'] for x in outputs]).detach().cpu().numpy()
+            oof = pd.DataFrame(oof_preds, columns=self.target_cols)
+            ids = [x['id'] for x in outputs]
+            ids = [list(x) for x in ids]
+            ids = list(itertools.chain.from_iterable(ids))
+
+            oof.insert(0, 'sig_id', ids)
+            oof_name = 'oof_' + self.cfg.exp.exp_name + f'_fold{self.cfg.train.fold}' + '.csv'
+            oof.to_csv(oof_name, index=False)
+            self.experiment.log_asset(file_data=oof_name, overwrite=True, copy_to_tmp=False)
+            os.remove(oof_name)
 
         return {'avg_val_loss': avg_loss}
 
