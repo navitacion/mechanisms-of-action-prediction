@@ -24,6 +24,7 @@ class DataModule(pl.LightningDataModule):
         self.data_dir = data_dir
         self.cv = cv
 
+
     def _Encode(self, df):
         cp_time_encoder = {
             48: 1,
@@ -44,9 +45,11 @@ class DataModule(pl.LightningDataModule):
 
         return df
 
+
     def _get_dummies(self, df):
         df = pd.get_dummies(df, columns=['cp_time','cp_dose'])
         return df
+
 
     def _add_PCA(self, df, cfg):
         # g-features
@@ -81,11 +84,19 @@ class DataModule(pl.LightningDataModule):
 
         return df
 
-    def _variancethreshold(self, df, threshold=0.5):
-        var_thresh = VarianceThreshold(threshold=threshold)
-        df = var_thresh.fit_transform(df)
 
-        return df
+    def _variancethreshold(self, df, threshold=0.5):
+        targets = df[self.target_cols]
+        var_thresh = VarianceThreshold(threshold=threshold)
+        cols = [c for c in df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'cp_type', 'cp_time', 'cp_dose']]
+        temp = var_thresh.fit_transform(df[cols])
+
+        out = df[['sig_id', 'is_train', 'cp_type']]
+        temp = pd.DataFrame(temp)
+        out = pd.concat([out, temp, targets], axis=1)
+
+        return out
+
 
     def prepare_data(self):
         # Prepare Data
@@ -102,17 +113,17 @@ class DataModule(pl.LightningDataModule):
 
         # "ctl_vehicle" is not in scope prediction
         self.df = self.df[self.df['cp_type'] != "ctl_vehicle"].reset_index(drop=True)
-        self.df.drop(['cp_type'], axis=1, inplace=True)
 
         # Preprocessing
-        self.df = self._Encode(self.df)
-        # self._get_dummies(self.df)
+        self.df = self._get_dummies(self.df)
         self.df = self._add_PCA(self.df, self.cfg)
-        self.feature_cols = [c for c in self.df.columns if c not in self.target_cols + ['sig_id', 'is_train']]
+        self.df = self._variancethreshold(self.df, threshold=self.cfg.train.threshold)
+        self.feature_cols = [c for c in self.df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'cp_type', 'cp_time', 'cp_dose']]
         # self.df = self._scaler(self.df, self.feature_cols, type='standard')
 
         del train, train_target, train_feature, test
         gc.collect()
+
 
     def setup(self, stage=None):
         # Split Train, Test
@@ -127,9 +138,17 @@ class DataModule(pl.LightningDataModule):
         train = df[df['fold'] != fold].reset_index(drop=True)
         val = df[df['fold'] == fold].reset_index(drop=True)
 
-        self.train_dataset = MoADataset(train, self.feature_cols, self.target_cols, phase='train')
-        self.val_dataset = MoADataset(val, self.feature_cols, self.target_cols, phase='val')
-        self.test_dataset = MoADataset(test, self.feature_cols, self.target_cols, phase='test')
+        X_train = train[self.feature_cols].values
+        y_train = train[self.target_cols].values
+        X_val = val[self.feature_cols].values
+        y_val = val[self.target_cols].values
+        val_id = val['sig_id'].values
+        X_test = test[self.feature_cols].values
+        test_id = test['sig_id'].values
+
+        self.train_dataset = MoADataset(X_train, y_train, None, phase='train')
+        self.val_dataset = MoADataset(X_val, y_val, val_id, phase='val')
+        self.test_dataset = MoADataset(X_test, None, test_id, phase='test')
 
         del df, test, train, val
         gc.collect()
@@ -172,8 +191,8 @@ class LightningSystem(pl.LightningModule):
 
 
     def training_step(self, batch, batch_idx):
-        cont_f, cat_f, label = batch
-        out = self.net(cont_f, cat_f)
+        inputs, label = batch
+        out = self.net(inputs)
         loss = self.criterion(out, label)
 
         logs = {'train/loss': loss.item()}
@@ -184,8 +203,8 @@ class LightningSystem(pl.LightningModule):
         return {'loss': loss, 'labels': label}
 
     def validation_step(self, batch, batch_idx):
-        cont_f, cat_f, label, ids = batch
-        out = self.net(cont_f, cat_f)
+        inputs, label, ids = batch
+        out = self.net(inputs)
         loss = self.criterion(out, label)
         logit = torch.sigmoid(out)
 
@@ -201,8 +220,6 @@ class LightningSystem(pl.LightningModule):
         logs = {'val/epoch_loss': avg_loss.item()}
         # Log loss
         self.experiment.log_metrics(logs, step=self.epoch_num)
-        # Update Epoch Num
-        self.epoch_num += 1
 
         # Save Weights
         if self.best_loss > avg_loss:
@@ -221,15 +238,16 @@ class LightningSystem(pl.LightningModule):
 
             oof.insert(0, 'sig_id', ids)
             oof_name = 'oof_' + self.cfg.exp.exp_name + f'_fold{self.cfg.train.fold}' + '.csv'
-            oof.to_csv(oof_name, index=False)
-            self.experiment.log_asset(file_data=oof_name, overwrite=True, copy_to_tmp=False)
-            os.remove(oof_name)
+            oof.to_csv(os.path.join('./output', oof_name), index=False)
+
+        # Update Epoch Num
+        self.epoch_num += 1
 
         return {'avg_val_loss': avg_loss}
 
     def test_step(self, batch, batch_idx):
-        cont_f, cat_f, ids = batch
-        out = self.forward(cont_f, cat_f)
+        inputs, ids = batch
+        out = self.forward(inputs)
         logits = torch.sigmoid(out)
 
         return {'pred': logits, 'id': ids}
