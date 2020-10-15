@@ -18,11 +18,12 @@ from .dataset import MoADataset
 
 
 class DataModule(pl.LightningDataModule):
-    def __init__(self, data_dir, cfg, cv):
+    def __init__(self, data_dir, cfg, cv, fold):
         super(DataModule, self).__init__()
         self.cfg = cfg
         self.data_dir = data_dir
         self.cv = cv
+        self.fold = fold
 
 
     def _Encode(self, df):
@@ -54,13 +55,13 @@ class DataModule(pl.LightningDataModule):
     def _add_PCA(self, df, cfg):
         # g-features
         g_cols = [c for c in df.columns if 'g-' in c]
-        temp = PCA(n_components=cfg.train.g_comp, random_state=cfg.train.seed).fit_transform(df[g_cols])
+        temp = PCA(n_components=cfg.train.g_comp, random_state=42).fit_transform(df[g_cols])
         temp = pd.DataFrame(temp, columns=[f'g-pca_{i}' for i in range(cfg.train.g_comp)])
         df = pd.concat([df, temp], axis=1)
 
         # c-features
         c_cols = [c for c in df.columns if 'c-' in c]
-        temp = PCA(n_components=cfg.train.c_comp, random_state=cfg.train.seed).fit_transform(df[c_cols])
+        temp = PCA(n_components=cfg.train.c_comp, random_state=42).fit_transform(df[c_cols])
         temp = pd.DataFrame(temp, columns=[f'c-pca_{i}' for i in range(cfg.train.c_comp)])
         df = pd.concat([df, temp], axis=1)
 
@@ -117,53 +118,54 @@ class DataModule(pl.LightningDataModule):
         # Preprocessing
         self.df = self._get_dummies(self.df)
         self.df = self._add_PCA(self.df, self.cfg)
-        self.df = self._variancethreshold(self.df, threshold=self.cfg.train.threshold)
+        if self.cfg.train.threshold is not None:
+            self.df = self._variancethreshold(self.df, threshold=self.cfg.train.threshold)
         self.feature_cols = [c for c in self.df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'cp_type', 'cp_time', 'cp_dose']]
         # self.df = self._scaler(self.df, self.feature_cols, type='standard')
 
-        del train, train_target, train_feature, test
-        gc.collect()
-
 
     def setup(self, stage=None):
-        # Split Train, Test
-        df = self.df[self.df['is_train'] == 1].reset_index(drop=True)
-        test = self.df[self.df['is_train'] == 0].reset_index(drop=True)
 
-        # Split Train, Validation
-        df['fold'] = -1
-        for i, (trn_idx, val_idx) in enumerate(self.cv.split(df, df[self.target_cols])):
-            df.loc[val_idx, 'fold'] = i
-        fold = self.cfg.train.fold
-        train = df[df['fold'] != fold].reset_index(drop=True)
-        val = df[df['fold'] == fold].reset_index(drop=True)
+        if stage == 'fit':
+            trainval = self.df[self.df['is_train'] == 1].reset_index(drop=True)
 
-        X_train = train[self.feature_cols].values
-        y_train = train[self.target_cols].values
-        X_val = val[self.feature_cols].values
-        y_val = val[self.target_cols].values
-        val_id = val['sig_id'].values
-        X_test = test[self.feature_cols].values
-        test_id = test['sig_id'].values
+            # Split Train, Validation
+            trainval['fold'] = -1
+            for i, (trn_idx, val_idx) in enumerate(self.cv.split(trainval, trainval[self.target_cols])):
+                trainval.loc[val_idx, 'fold'] = i
 
-        self.train_dataset = MoADataset(X_train, y_train, None, phase='train')
-        self.val_dataset = MoADataset(X_val, y_val, val_id, phase='val')
-        self.test_dataset = MoADataset(X_test, None, test_id, phase='test')
+            train = trainval[trainval['fold'] != self.fold].reset_index(drop=True)
+            val = trainval[trainval['fold'] == self.fold].reset_index(drop=True)
 
-        del df, test, train, val
-        gc.collect()
+            self.train_dataset = MoADataset(train[self.feature_cols].values,
+                                            train[self.target_cols].values,
+                                            None,
+                                            phase='train')
+
+            self.val_dataset = MoADataset(val[self.feature_cols].values,
+                                          val[self.target_cols].values,
+                                          val['sig_id'].values,
+                                          phase='val')
+
+        if stage == 'test':
+            test = self.df[self.df['is_train'] == 0].reset_index(drop=True)
+            self.test_dataset = MoADataset(test[self.feature_cols].values,
+                                           None,
+                                           test['sig_id'].values,
+                                           phase='test')
+
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset,
                           batch_size=self.cfg.train.batch_size,
                           pin_memory=True,
-                          sampler=RandomSampler(self.train_dataset), drop_last=True)
+                          sampler=RandomSampler(self.train_dataset), drop_last=False)
 
     def val_dataloader(self):
         return DataLoader(self.val_dataset,
                           batch_size=self.cfg.train.batch_size,
                           pin_memory=True,
-                          sampler=SequentialSampler(self.val_dataset), drop_last=True)
+                          sampler=SequentialSampler(self.val_dataset), drop_last=False)
 
     def test_dataloader(self):
         return DataLoader(self.test_dataset,
@@ -173,12 +175,13 @@ class DataModule(pl.LightningDataModule):
 
 
 class LightningSystem(pl.LightningModule):
-    def __init__(self, net, cfg, experiment, target_cols):
+    def __init__(self, net, cfg, experiment, target_cols, fold):
         super(LightningSystem, self).__init__()
         self.net = net
         self.cfg = cfg
         self.experiment = experiment
         self.target_cols = target_cols
+        self.fold = fold
         self.criterion = nn.BCEWithLogitsLoss()
         self.best_loss = 1e+9
         self.epoch_num = 0
@@ -195,12 +198,13 @@ class LightningSystem(pl.LightningModule):
         out = self.net(inputs)
         loss = self.criterion(out, label)
 
-        logs = {'train/loss': loss.item()}
-        # batch_idx + Epoch * Iteration
-        step = batch_idx
-        self.experiment.log_metrics(logs, step=step)
-
         return {'loss': loss, 'labels': label}
+
+    def training_epoch_end(self, outputs):
+        avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
+        logs = {f'train/epoch_loss_{self.fold}': avg_loss.item()}
+        # Log loss
+        self.experiment.log_metrics(logs, step=self.epoch_num)
 
     def validation_step(self, batch, batch_idx):
         inputs, label, ids = batch
@@ -208,23 +212,18 @@ class LightningSystem(pl.LightningModule):
         loss = self.criterion(out, label)
         logit = torch.sigmoid(out)
 
-        val_logs = {'val/loss': loss.item()}
-        # batch_idx + Epoch * Iteration
-        step = batch_idx
-        self.experiment.log_metrics(val_logs, step=step)
-
         return {'val_loss': loss, 'labels': label.detach(), 'id': ids, 'pred': logit}
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        logs = {'val/epoch_loss': avg_loss.item()}
+        logs = {f'val/epoch_loss_{self.fold}': avg_loss.item()}
         # Log loss
         self.experiment.log_metrics(logs, step=self.epoch_num)
 
         # Save Weights
-        if self.best_loss > avg_loss:
+        if avg_loss < self.best_loss:
             self.best_loss = avg_loss
-            filename = f'{self.cfg.exp.exp_name}_epoch_{self.epoch_num}_loss_{self.best_loss:.5f}.pth'
+            filename = f'{self.cfg.exp.exp_name}_fold_{self.fold}_epoch_{self.epoch_num}_loss_{self.best_loss:.5f}.pth'
             torch.save(self.net.state_dict(), filename)
             self.experiment.log_model(name=filename, file_or_folder='./'+filename)
             os.remove(filename)
@@ -237,7 +236,7 @@ class LightningSystem(pl.LightningModule):
             ids = list(itertools.chain.from_iterable(ids))
 
             oof.insert(0, 'sig_id', ids)
-            oof_name = 'oof_' + self.cfg.exp.exp_name + f'_fold{self.cfg.train.fold}' + '.csv'
+            oof_name = 'oof_' + self.cfg.exp.exp_name + f'_fold{self.fold}' + '.csv'
             oof.to_csv(os.path.join('./output', oof_name), index=False)
 
         # Update Epoch Num

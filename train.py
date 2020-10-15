@@ -9,16 +9,10 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 from src.lightning import LightningSystem, DataModule
 from src.model import SimpleDenseNet
-from src.utils import seed_everything
+from src.utils import seed_everything, check_oof_score
 
 import warnings
 warnings.filterwarnings('ignore')
-
-# Config  ###########################
-# Input Data Directory
-data_dir = './input'
-# CV
-cv = MultilabelStratifiedKFold(n_splits=4)
 
 
 @hydra.main('config.yml')
@@ -28,14 +22,12 @@ def main(cfg: DictConfig):
     # Random Seed
     seed_everything(cfg.train.seed)
 
-    # Lightning Data Module  ####################################################
-    datamodule = DataModule(data_dir, cfg, cv)
-    datamodule.prepare_data()
-    target_cols = datamodule.target_cols
-    feature_cols = datamodule.feature_cols
-
-    # Model  ####################################################################
-    net = SimpleDenseNet(cfg, in_features=len(feature_cols))
+    # Config  ###########################
+    # Input Data Directory
+    data_dir = './input'
+    NFOLDS = cfg.train.fold
+    # CV
+    cv = MultilabelStratifiedKFold(n_splits=NFOLDS)
 
     # Comet.ml
     experiment = Experiment(api_key=cfg.comet_ml.api_key,
@@ -43,48 +35,61 @@ def main(cfg: DictConfig):
     # Log Parameters
     experiment.log_parameters(dict(cfg.exp))
     experiment.log_parameters(dict(cfg.train))
-    # Log Model Graph
-    experiment.set_model_graph(str(net))
 
-    # Lightning Module  #########################################################
-    model = LightningSystem(net, cfg, experiment, target_cols)
+    for fold in range(NFOLDS):
+        print(f'Fold: {fold}')
+        # Lightning Data Module  ####################################################
+        dm = DataModule(data_dir, cfg, cv, fold)
+        dm.prepare_data()
+        target_cols = dm.target_cols
+        feature_cols = dm.feature_cols
 
-    checkpoint_callback = ModelCheckpoint(
-        filepath='./checkpoint',
-        save_top_k=1,
-        verbose=True,
-        monitor='avg_val_loss',
-        mode='min',
-        prefix=cfg.exp.exp_name + '_'
-    )
+        # Model  ####################################################################
+        net = SimpleDenseNet(cfg, in_features=len(feature_cols))
 
-    early_stop_callback = EarlyStopping(
-        monitor='avg_val_loss',
-        min_delta=0.00,
-        patience=5,
-        verbose=False,
-        mode='min'
-    )
+        if fold == 0:
+            # Log Model Graph
+            experiment.set_model_graph(str(net))
 
-    trainer = Trainer(
-        logger=False,
-        max_epochs=cfg.train.epoch,
-        checkpoint_callback=checkpoint_callback,
-        early_stop_callback=early_stop_callback,
-        # gpus=1,
-            )
+        # Lightning Module  #########################################################
+        model = LightningSystem(net, cfg, experiment, target_cols, fold)
 
-    # Train & Test  ############################################################
-    print('MoA Prediction')
-    print(f'Feature Num: {len(feature_cols)}')
+        checkpoint_callback = ModelCheckpoint(
+            filepath='./checkpoint',
+            save_top_k=1,
+            verbose=False,
+            monitor='avg_val_loss',
+            mode='min',
+            prefix=f'{cfg.exp.exp_name}_{fold}_'
+        )
 
-    # Train
-    trainer.fit(model, datamodule=datamodule)
-    checkpoint_path = glob.glob(f'./checkpoint/{cfg.exp.exp_name}_*.ckpt')[0]
-    experiment.log_asset(file_data=checkpoint_path, copy_to_tmp=False)
+        early_stop_callback = EarlyStopping(
+            monitor='avg_val_loss',
+            min_delta=0.00,
+            patience=3,
+            verbose=False,
+            mode='min'
+        )
 
-    # Test
-    # trainer.test(model, datamodule=datamodule)
+        trainer = Trainer(
+            logger=False,
+            max_epochs=cfg.train.epoch,
+            checkpoint_callback=checkpoint_callback,
+            early_stop_callback=early_stop_callback,
+            gpus=1,
+                )
+
+        # Train & Test  ############################################################
+        print('MoA Prediction')
+        print(f'Feature Num: {len(feature_cols)}')
+
+        # Train
+        trainer.fit(model, datamodule=dm)
+        checkpoint_path = glob.glob(f'./checkpoint/{cfg.exp.exp_name}_{fold}_*.ckpt')[0]
+        experiment.log_asset(file_data=checkpoint_path, copy_to_tmp=False)
+
+    score = check_oof_score(cfg)
+    experiment.log_metric('oof_score', score)
 
 
 if __name__ == '__main__':

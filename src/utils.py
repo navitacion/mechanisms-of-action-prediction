@@ -1,7 +1,9 @@
 import random
 import os
+import glob
 import numpy as np
 import pandas as pd
+from sklearn.metrics import log_loss
 from sklearn.decomposition import PCA
 import torch
 from torch.utils.data import DataLoader
@@ -117,3 +119,27 @@ def get_dataloaders(trainval, test, batch_size, fold, feature_cols, target_cols)
 
 
 
+def check_oof_score(cfg, data_dir='./output', target_dir='./input'):
+
+    csv_path = glob.glob(os.path.join(data_dir, f'oof_{cfg.exp.exp_name}*'))
+    oof = pd.DataFrame()
+
+    for path in csv_path:
+        temp = pd.read_csv(path)
+        oof = pd.concat([oof, temp], axis=0)
+
+    oof = oof.sort_values(by='sig_id', ascending=True)
+
+    org_target = pd.read_csv(os.path.join(target_dir, 'train_targets_scored.csv'))
+    org_feature = pd.read_csv(os.path.join(target_dir, 'train_features.csv'))
+    target_cols = org_target.columns[1:]
+    org = pd.merge(org_target, org_feature, on='sig_id')
+    org = org[org['cp_type'] != "ctl_vehicle"].reset_index(drop=True)
+
+    org = org.sort_values(by='sig_id', ascending=True)
+
+    score = 0
+    for c in target_cols:
+        score += log_loss(y_true=org[c].values, y_pred=oof[c].values) / len(target_cols)
+
+    return score
