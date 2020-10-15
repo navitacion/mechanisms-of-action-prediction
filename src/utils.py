@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import log_loss
 from sklearn.decomposition import PCA
+from sklearn.feature_selection import VarianceThreshold
 import torch
 from torch.utils.data import DataLoader
 
@@ -48,13 +49,27 @@ class Datapreprocessing:
 
         return df
 
+
+    def _variancethreshold(self, df, threshold=0.5):
+        targets = df[self.target_cols]
+        var_thresh = VarianceThreshold(threshold=threshold)
+        cols = [c for c in df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'cp_type', 'cp_time', 'cp_dose']]
+        temp = var_thresh.fit_transform(df[cols])
+
+        out = df[['sig_id', 'is_train', 'cp_type']]
+        temp = pd.DataFrame(temp)
+        out = pd.concat([out, temp, targets], axis=1)
+
+        return out
+
+
     def load_data(self):
         train_target = pd.read_csv(os.path.join(self.data_dir, 'train_targets_scored.csv'))
         train_feature = pd.read_csv(os.path.join(self.data_dir, 'train_features.csv'))
         test = pd.read_csv(os.path.join(self.data_dir, 'test_features.csv'))
 
         train = pd.merge(train_target, train_feature, on='sig_id')
-        target_cols = [c for c in train_target.columns if c != 'sig_id']
+        self.target_cols = [c for c in train_target.columns if c != 'sig_id']
 
         test['is_train'] = 0
         train['is_train'] = 1
@@ -63,23 +78,25 @@ class Datapreprocessing:
         # "ctl_vehicle" is not in scope prediction
         df = df[df['cp_type'] != "ctl_vehicle"].reset_index(drop=True)
 
-        return df, target_cols
+        return df
 
-    def preprocessing(self, df, target_cols):
+    def preprocessing(self, df):
         df = self._get_dummies(df)
         df = self._add_PCA(df, self.cfg)
-        feature_cols = [c for c in df.columns if c not in target_cols + ['sig_id', 'is_train', 'cp_type', 'cp_time', 'cp_dose']]
+        if self.cfg.train.var_thresh is not None:
+            df = self._variancethreshold(df, self.cfg.train.var_thresh)
+        self.feature_cols = [c for c in df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'cp_type', 'cp_time', 'cp_dose']]
 
-        return df, feature_cols
+        return df
 
-    def split_data(self, df, target_cols):
+    def split_data(self, df):
         # Split Train, Test
         trainval = df[df['is_train'] == 1].reset_index(drop=True)
         test = df[df['is_train'] == 0].reset_index(drop=True)
 
         # Split Train, Validation
         trainval['fold'] = -1
-        for i, (trn_idx, val_idx) in enumerate(self.cv.split(trainval, trainval[target_cols])):
+        for i, (trn_idx, val_idx) in enumerate(self.cv.split(trainval, trainval[self.target_cols])):
             trainval.loc[val_idx, 'fold'] = i
 
         return trainval, test
@@ -88,13 +105,13 @@ class Datapreprocessing:
 
     def run(self):
         # Data Loading
-        df, target_cols = self.load_data()
+        df = self.load_data()
         # Preprocessing
-        df, feature_cols = self.preprocessing(df, target_cols)
+        df = self.preprocessing(df)
         # Split Data
-        trainval, test = self.split_data(df, target_cols)
+        trainval, test = self.split_data(df)
 
-        return trainval, test, feature_cols, target_cols
+        return trainval, test
 
 
 

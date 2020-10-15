@@ -12,7 +12,7 @@ exp:
 train:
   g_comp: 29
   c_comp: 4
-  threshold: 0.5
+  var_thresh: 0.5
   batch_size: 128
   hidden_size: 2048
   dropout_rate: 0.4

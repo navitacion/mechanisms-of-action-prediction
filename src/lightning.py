@@ -17,125 +17,180 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from .dataset import MoADataset
 
 
+# class DataModule(pl.LightningDataModule):
+#     def __init__(self, data_dir, cfg, cv, fold):
+#         super(DataModule, self).__init__()
+#         self.cfg = cfg
+#         self.data_dir = data_dir
+#         self.cv = cv
+#         self.fold = fold
+#
+#
+#     def _Encode(self, df):
+#         cp_time_encoder = {
+#             48: 1,
+#             72: 2,
+#             24: 0
+#         }
+#
+#         cp_dose_encoder = {
+#             'D1': 0,
+#             'D2': 1
+#         }
+#
+#         df['cp_time'] = df['cp_time'].map(cp_time_encoder)
+#         df['cp_dose'] = df['cp_dose'].map(cp_dose_encoder)
+#
+#         for c in ['cp_time', 'cp_dose']:
+#             df[c] = df[c].astype(int)
+#
+#         return df
+#
+#
+#     def _get_dummies(self, df):
+#         df = pd.get_dummies(df, columns=['cp_time','cp_dose'])
+#         return df
+#
+#
+#     def _add_PCA(self, df, cfg):
+#         # g-features
+#         g_cols = [c for c in df.columns if 'g-' in c]
+#         temp = PCA(n_components=cfg.train.g_comp, random_state=42).fit_transform(df[g_cols])
+#         temp = pd.DataFrame(temp, columns=[f'g-pca_{i}' for i in range(cfg.train.g_comp)])
+#         df = pd.concat([df, temp], axis=1)
+#
+#         # c-features
+#         c_cols = [c for c in df.columns if 'c-' in c]
+#         temp = PCA(n_components=cfg.train.c_comp, random_state=42).fit_transform(df[c_cols])
+#         temp = pd.DataFrame(temp, columns=[f'c-pca_{i}' for i in range(cfg.train.c_comp)])
+#         df = pd.concat([df, temp], axis=1)
+#
+#         del temp
+#
+#         return df
+#
+#
+#     def _scaler(self, df, feature_cols, type='standard'):
+#         for c in feature_cols:
+#             if c in ['cp_type', 'cp_time', 'cp_dose']:
+#                 continue
+#
+#             if type == 'standard':
+#                 scaler = StandardScaler()
+#             elif type == 'robust':
+#                 scaler = RobustScaler()
+#             else:
+#                 scaler = None
+#             df[c] = scaler.fit_transform(df[c].values.reshape((-1, 1)))
+#
+#         return df
+#
+#
+#     def _variancethreshold(self, df, threshold=0.5):
+#         targets = df[self.target_cols]
+#         var_thresh = VarianceThreshold(threshold=threshold)
+#         cols = [c for c in df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'cp_type', 'cp_time', 'cp_dose']]
+#         temp = var_thresh.fit_transform(df[cols])
+#
+#         out = df[['sig_id', 'is_train', 'cp_type']]
+#         temp = pd.DataFrame(temp)
+#         out = pd.concat([out, temp, targets], axis=1)
+#
+#         return out
+#
+#
+#     def prepare_data(self):
+#         # Prepare Data
+#         train_target = pd.read_csv(os.path.join(self.data_dir, 'train_targets_scored.csv'))
+#         train_feature = pd.read_csv(os.path.join(self.data_dir, 'train_features.csv'))
+#         test = pd.read_csv(os.path.join(self.data_dir, 'test_features.csv'))
+#
+#         train = pd.merge(train_target, train_feature, on='sig_id')
+#         self.target_cols = [c for c in train_target.columns if c != 'sig_id']
+#
+#         test['is_train'] = 0
+#         train['is_train'] = 1
+#         self.df = pd.concat([train, test], axis=0, ignore_index=True)
+#
+#         # "ctl_vehicle" is not in scope prediction
+#         self.df = self.df[self.df['cp_type'] != "ctl_vehicle"].reset_index(drop=True)
+#
+#         # Preprocessing
+#         self.df = self._get_dummies(self.df)
+#         self.df = self._add_PCA(self.df, self.cfg)
+#         if self.cfg.train.threshold is not None:
+#             self.df = self._variancethreshold(self.df, threshold=self.cfg.train.threshold)
+#         self.feature_cols = [c for c in self.df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'cp_type', 'cp_time', 'cp_dose']]
+#         # self.df = self._scaler(self.df, self.feature_cols, type='standard')
+#
+#
+#     def setup(self, stage=None):
+#
+#         if stage == 'fit':
+#             trainval = self.df[self.df['is_train'] == 1].reset_index(drop=True)
+#
+#             # Split Train, Validation
+#             trainval['fold'] = -1
+#             for i, (trn_idx, val_idx) in enumerate(self.cv.split(trainval, trainval[self.target_cols])):
+#                 trainval.loc[val_idx, 'fold'] = i
+#
+#             train = trainval[trainval['fold'] != self.fold].reset_index(drop=True)
+#             val = trainval[trainval['fold'] == self.fold].reset_index(drop=True)
+#
+#             self.train_dataset = MoADataset(train[self.feature_cols].values,
+#                                             train[self.target_cols].values,
+#                                             None,
+#                                             phase='train')
+#
+#             self.val_dataset = MoADataset(val[self.feature_cols].values,
+#                                           val[self.target_cols].values,
+#                                           val['sig_id'].values,
+#                                           phase='val')
+#
+#         if stage == 'test':
+#             test = self.df[self.df['is_train'] == 0].reset_index(drop=True)
+#             self.test_dataset = MoADataset(test[self.feature_cols].values,
+#                                            None,
+#                                            test['sig_id'].values,
+#                                            phase='test')
+#
+#
+#     def train_dataloader(self):
+#         return DataLoader(self.train_dataset,
+#                           batch_size=self.cfg.train.batch_size,
+#                           pin_memory=True,
+#                           sampler=RandomSampler(self.train_dataset), drop_last=False)
+#
+#     def val_dataloader(self):
+#         return DataLoader(self.val_dataset,
+#                           batch_size=self.cfg.train.batch_size,
+#                           pin_memory=True,
+#                           sampler=SequentialSampler(self.val_dataset), drop_last=False)
+#
+#     def test_dataloader(self):
+#         return DataLoader(self.test_dataset,
+#                           batch_size=self.cfg.train.batch_size,
+#                           pin_memory=False,
+#                           shuffle=False, drop_last=False)
+
+
 class DataModule(pl.LightningDataModule):
-    def __init__(self, data_dir, cfg, cv, fold):
+    def __init__(self, trainval, test, cfg, feature_cols, target_cols, fold):
         super(DataModule, self).__init__()
+        self.trainval = trainval
+        self.test = test
         self.cfg = cfg
-        self.data_dir = data_dir
-        self.cv = cv
+        self.feature_cols = feature_cols
+        self.target_cols = target_cols
         self.fold = fold
 
-
-    def _Encode(self, df):
-        cp_time_encoder = {
-            48: 1,
-            72: 2,
-            24: 0
-        }
-
-        cp_dose_encoder = {
-            'D1': 0,
-            'D2': 1
-        }
-
-        df['cp_time'] = df['cp_time'].map(cp_time_encoder)
-        df['cp_dose'] = df['cp_dose'].map(cp_dose_encoder)
-
-        for c in ['cp_time', 'cp_dose']:
-            df[c] = df[c].astype(int)
-
-        return df
-
-
-    def _get_dummies(self, df):
-        df = pd.get_dummies(df, columns=['cp_time','cp_dose'])
-        return df
-
-
-    def _add_PCA(self, df, cfg):
-        # g-features
-        g_cols = [c for c in df.columns if 'g-' in c]
-        temp = PCA(n_components=cfg.train.g_comp, random_state=42).fit_transform(df[g_cols])
-        temp = pd.DataFrame(temp, columns=[f'g-pca_{i}' for i in range(cfg.train.g_comp)])
-        df = pd.concat([df, temp], axis=1)
-
-        # c-features
-        c_cols = [c for c in df.columns if 'c-' in c]
-        temp = PCA(n_components=cfg.train.c_comp, random_state=42).fit_transform(df[c_cols])
-        temp = pd.DataFrame(temp, columns=[f'c-pca_{i}' for i in range(cfg.train.c_comp)])
-        df = pd.concat([df, temp], axis=1)
-
-        del temp
-
-        return df
-
-
-    def _scaler(self, df, feature_cols, type='standard'):
-        for c in feature_cols:
-            if c in ['cp_type', 'cp_time', 'cp_dose']:
-                continue
-
-            if type == 'standard':
-                scaler = StandardScaler()
-            elif type == 'robust':
-                scaler = RobustScaler()
-            else:
-                scaler = None
-            df[c] = scaler.fit_transform(df[c].values.reshape((-1, 1)))
-
-        return df
-
-
-    def _variancethreshold(self, df, threshold=0.5):
-        targets = df[self.target_cols]
-        var_thresh = VarianceThreshold(threshold=threshold)
-        cols = [c for c in df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'cp_type', 'cp_time', 'cp_dose']]
-        temp = var_thresh.fit_transform(df[cols])
-
-        out = df[['sig_id', 'is_train', 'cp_type']]
-        temp = pd.DataFrame(temp)
-        out = pd.concat([out, temp, targets], axis=1)
-
-        return out
-
-
     def prepare_data(self):
-        # Prepare Data
-        train_target = pd.read_csv(os.path.join(self.data_dir, 'train_targets_scored.csv'))
-        train_feature = pd.read_csv(os.path.join(self.data_dir, 'train_features.csv'))
-        test = pd.read_csv(os.path.join(self.data_dir, 'test_features.csv'))
-
-        train = pd.merge(train_target, train_feature, on='sig_id')
-        self.target_cols = [c for c in train_target.columns if c != 'sig_id']
-
-        test['is_train'] = 0
-        train['is_train'] = 1
-        self.df = pd.concat([train, test], axis=0, ignore_index=True)
-
-        # "ctl_vehicle" is not in scope prediction
-        self.df = self.df[self.df['cp_type'] != "ctl_vehicle"].reset_index(drop=True)
-
-        # Preprocessing
-        self.df = self._get_dummies(self.df)
-        self.df = self._add_PCA(self.df, self.cfg)
-        if self.cfg.train.threshold is not None:
-            self.df = self._variancethreshold(self.df, threshold=self.cfg.train.threshold)
-        self.feature_cols = [c for c in self.df.columns if c not in self.target_cols + ['sig_id', 'is_train', 'cp_type', 'cp_time', 'cp_dose']]
-        # self.df = self._scaler(self.df, self.feature_cols, type='standard')
-
+        pass
 
     def setup(self, stage=None):
-
         if stage == 'fit':
-            trainval = self.df[self.df['is_train'] == 1].reset_index(drop=True)
-
-            # Split Train, Validation
-            trainval['fold'] = -1
-            for i, (trn_idx, val_idx) in enumerate(self.cv.split(trainval, trainval[self.target_cols])):
-                trainval.loc[val_idx, 'fold'] = i
-
-            train = trainval[trainval['fold'] != self.fold].reset_index(drop=True)
-            val = trainval[trainval['fold'] == self.fold].reset_index(drop=True)
+            train = self.trainval[self.trainval['fold'] != self.fold].reset_index(drop=True)
+            val = self.trainval[self.trainval['fold'] == self.fold].reset_index(drop=True)
 
             self.train_dataset = MoADataset(train[self.feature_cols].values,
                                             train[self.target_cols].values,
@@ -148,29 +203,24 @@ class DataModule(pl.LightningDataModule):
                                           phase='val')
 
         if stage == 'test':
-            test = self.df[self.df['is_train'] == 0].reset_index(drop=True)
-            self.test_dataset = MoADataset(test[self.feature_cols].values,
+            self.test_dataset = MoADataset(self.test[self.feature_cols].values,
                                            None,
-                                           test['sig_id'].values,
+                                           self.test['sig_id'].values,
                                            phase='test')
-
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset,
                           batch_size=self.cfg.train.batch_size,
-                          pin_memory=True,
-                          sampler=RandomSampler(self.train_dataset), drop_last=False)
+                          shuffle=True)
 
     def val_dataloader(self):
         return DataLoader(self.val_dataset,
                           batch_size=self.cfg.train.batch_size,
-                          pin_memory=True,
-                          sampler=SequentialSampler(self.val_dataset), drop_last=False)
+                          shuffle=False)
 
     def test_dataloader(self):
         return DataLoader(self.test_dataset,
                           batch_size=self.cfg.train.batch_size,
-                          pin_memory=False,
                           shuffle=False, drop_last=False)
 
 
