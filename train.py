@@ -9,7 +9,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 from src.lightning import LightningSystem, DataModule
 from src.model import SimpleDenseNet
-from src.utils import seed_everything, check_oof_score, Datapreprocessing
+from src.utils import seed_everything, check_oof_score
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -27,7 +27,7 @@ def main(cfg: DictConfig):
     data_dir = './input'
     NFOLDS = cfg.train.fold
     # CV
-    cv = MultilabelStratifiedKFold(n_splits=NFOLDS)
+    cv = MultilabelStratifiedKFold(n_splits=NFOLDS, random_state=cfg.train.seed, shuffle=True)
 
     # Comet.ml
     experiment = Experiment(api_key=cfg.comet_ml.api_key,
@@ -36,20 +36,13 @@ def main(cfg: DictConfig):
     experiment.log_parameters(dict(cfg.exp))
     experiment.log_parameters(dict(cfg.train))
 
-
-    # Data Loading & Preprocessing  ############################
-    dataprep = Datapreprocessing(data_dir, cfg, cv)
-    trainval, test = dataprep.run()
-    target_cols = dataprep.target_cols
-    feature_cols = dataprep.feature_cols
-
     for fold in range(NFOLDS):
         print(f'Fold: {fold}')
         # Lightning Data Module  ####################################################
-        dm = DataModule(trainval, test, cfg, feature_cols, target_cols, fold)
-        # dm.prepare_data()
-        # target_cols = dm.target_cols
-        # feature_cols = dm.feature_cols
+        dm = DataModule(data_dir, cfg, cv, fold)
+        dm.prepare_data()
+        target_cols = dm.target_cols
+        feature_cols = dm.feature_cols
 
         # Model  ####################################################################
         net = SimpleDenseNet(cfg, in_features=len(feature_cols))
